@@ -79,11 +79,3 @@ a.article-title:hover {
 .account-heading {
   font-size: 2.5rem;
 }
-
-/* .post {
-  overflow: hidden !important;
-  text-overflow: ellipsis;
-  display: inline-block;
-  white-space: nowrap;
-  width: 600px;
-} */

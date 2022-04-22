@@ -3,7 +3,7 @@ import secrets
 from PIL import Image
 from flask import render_template, url_for, flash, redirect, request, abort
 from movieforum import app, db, bcrypt, mail
-from movieforum.forms import RegistrationForm, LoginForm, UpdateAccountForm, PostForm
+from movieforum.forms import RegistrationForm, LoginForm, UpdateAccountForm, PostForm, RequestResetForm, ResetPasswordForm
 from movieforum.models import User, Post
 from flask_login import login_user, current_user, logout_user, login_required
 from flask_mail import Message
@@ -12,10 +12,10 @@ from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 
 s = URLSafeTimedSerializer(app.secret_key)
 
-def send_mail(email, token):
+def send_mail(email, token, username):
     msg = Message('Confirm Email', sender='kawasu.forum@gmail.com', recipients=[email])
     link = url_for('confirm_email', token=token, _external=True)
-    msg.body = 'To verify your email address please follow the link (link is active for an hour): {}'.format(link)
+    msg.body = f'Dear {username}, to verify your email address please follow the link (link is active for an hour): {link}'
     mail.send(msg)
 
 
@@ -24,7 +24,8 @@ def send_mail(email, token):
 def home():
     page = request.args.get('page', 1, type=int)
     posts = Post.query.order_by(Post.date_posted.desc()).paginate(page=page, per_page=5)
-    return render_template('home.html', posts=posts)
+    online_users = User.query.filter_by(online=True).all()
+    return render_template('home.html', posts=posts, online_users=online_users)
 
 
 
@@ -36,11 +37,12 @@ def register():
     if form.validate_on_submit():
         email = form.email.data
         token = s.dumps(email, salt='email-confirm')
-        send_mail(email,token)
+        send_mail(email,token, username=form.username.data)
         hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
         user = User(username=form.username.data, email=form.email.data, password=hashed_password)
         db.session.add(user)
         db.session.commit()
+        logout_user()
         flash('A confirmation mail is sent to your email address. Please check your inbox!', 'warning')
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
@@ -59,6 +61,8 @@ def login():
             elif bcrypt.check_password_hash(user.password, form.password.data):
                 login_user(user, remember=form.remember.data)
                 next_page = request.args.get('next')
+                user.online=True
+                db.session.commit()
                 return redirect(next_page) if next_page else redirect(url_for('home'))
             else:
                 flash('Login Unsuccessful. Please check email and password', 'danger')
@@ -69,6 +73,8 @@ def login():
 
 @app.route("/logout")
 def logout():
+    current_user.online=False
+    db.session.commit()
     logout_user()
     return redirect(url_for('home'))
 
@@ -103,7 +109,7 @@ def account():
         form.username.data = current_user.username
     image_file = url_for('static', filename='profile_pics/' + current_user.image_file)
     return render_template('account.html', title='Account',
-                           image_file=image_file, form=form)
+                           image_file=image_file, form=form, user_id=current_user.id)
 
 
 @app.route("/post/new", methods=['GET', 'POST'])
@@ -157,6 +163,18 @@ def delete_post(post_id):
     flash('Your post has been deleted!', 'success')
     return redirect(url_for('home'))
 
+@app.route("/account/<int:user_id>/delete", methods=['POST'])
+@login_required
+def delete_account(user_id):
+    user = User.query.get_or_404(user_id)
+    posts = Post.query.filter_by(user_id=user_id).all()
+    for post in posts:
+        db.session.delete(post)
+    db.session.delete(user)
+    db.session.commit()
+    flash('Your account has been deleted!', 'success')
+    return redirect(url_for('home'))
+
 
 @app.route("/user/<string:username>")
 def user_posts(username):
@@ -178,3 +196,46 @@ def confirm_email(token):
         return '<h1>The token is expired!</h1>'
     flash('You account is created successfully', 'success')
     return redirect(url_for('login'))
+
+
+def send_reset_email(user):
+    token = user.get_reset_token()
+    msg = Message('Password Reset Request',
+                  sender='kawasu.forum@gmail.com',
+                  recipients=[user.email])
+    msg.body = f'''To reset your password, visit the following link:
+{url_for('reset_token', token=token, _external=True)}
+
+If you did not make this request then simply ignore this email and no changes will be made.
+'''
+    mail.send(msg)
+
+@app.route("/reset_password", methods=['GET', 'POST'])
+def reset_request():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+    form = RequestResetForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        send_reset_email(user)
+        flash('An email has been sent with instructions to reset your password.', 'info')
+        return redirect(url_for('login'))
+    return render_template('reset_request.html', title='Reset Password', form=form)
+
+
+@app.route("/reset_password/<token>", methods=['GET', 'POST'])
+def reset_token(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+    user = User.verify_reset_token(token)
+    if user is None:
+        flash('That is an invalid or expired token', 'warning')
+        return redirect(url_for('reset_request'))
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        hashed_password = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
+        user.password = hashed_password
+        db.session.commit()
+        flash('Your password has been updated! You are now able to log in', 'success')
+        return redirect(url_for('login'))
+    return render_template('reset_token.html', title='Reset Password', form=form)
