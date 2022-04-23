@@ -8,7 +8,7 @@ from movieforum.models import User
 
 def password_check(form, field):
       
-    SpecialSym =['$', '@', '#', '%']
+    SpecialSym =['$', '@', '#', '%', '!', '&', '*']
     val = True
       
     if len(field.data) < 6:
@@ -32,7 +32,7 @@ def password_check(form, field):
         val = False
           
     if not any(char in SpecialSym for char in field.data):
-        raise ValidationError('Password should have at least one of the symbols $@#%')
+        raise ValidationError('Password should have at least one of the symbols $@#%!&*')
         val = False
 
 class RegistrationForm(FlaskForm):

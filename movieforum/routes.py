@@ -43,7 +43,7 @@ def register():
         db.session.add(user)
         db.session.commit()
         logout_user()
-        flash('A confirmation mail is sent to your email address. Please check your inbox!', 'warning')
+        flash('A confirmation mail is sent to your email address. Please check your inbox!', 'info')
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
 
@@ -91,6 +91,7 @@ def save_picture(form_picture):
     i.save(picture_path)
 
     return picture_fn
+
 
 
 @app.route("/account", methods=['GET', 'POST'])
