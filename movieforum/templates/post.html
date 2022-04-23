@@ -36,7 +36,12 @@
       </div>
     </div>
   </div>
-  <div id="disqus_thread"></div>
+  {% if current_user.is_authenticated  %}
+    <div id="disqus_thread"></div>
+  
+  {% else  %}
+    <p>In order to see the comments you should be <a href="{{ url_for('login')  }}">authenticated</a></p>
+  {% endif  %}
   <script>
       /**
       *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
