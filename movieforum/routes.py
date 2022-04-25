@@ -12,6 +12,7 @@ from itsdangerous import URLSafeTimedSerializer, SignatureExpired
 
 s = URLSafeTimedSerializer(app.secret_key)
 
+
 def send_mail(email, token, username):
     msg = Message('Confirm Email', sender='kawasu.forum@gmail.com', recipients=[email])
     link = url_for('confirm_email', token=token, _external=True)
@@ -43,7 +44,7 @@ def register():
         db.session.add(user)
         db.session.commit()
         logout_user()
-        flash('A confirmation mail is sent to your email address. Please check your inbox!', 'info')
+        flash(f'Dear {form.username.data}, a confirmation mail is sent to your email address. Please check your inbox!', 'info')
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
 
@@ -113,12 +114,25 @@ def account():
                            image_file=image_file, form=form, user_id=current_user.id)
 
 
+def save_post_image(picture_file):
+    picture_name = picture_file.filename
+    random_hex = secrets.token_hex(8)
+    _, f_ext = os.path.splitext(picture_name)
+    picture_fn = random_hex + f_ext
+    picture_path = os.path.join(app.root_path, 'static/post_pics', picture_fn)
+    picture_file.save(picture_path)
+    return picture_fn
+
 @app.route("/post/new", methods=['GET', 'POST'])
 @login_required
 def new_post():
     form = PostForm()
     if form.validate_on_submit():
-        post = Post(title=form.title.data, content=form.content.data, author=current_user)
+        if form.picture.data:
+            picture_file = save_post_image(form.picture.data)
+            post = Post(title=form.title.data, content=form.content.data, author=current_user, image_file=picture_file)
+        else:
+            post = Post(title=form.title.data, content=form.content.data, author=current_user)
         db.session.add(post)
         db.session.commit()
         flash('Your post has been created!', 'success')
@@ -130,6 +144,9 @@ def new_post():
 @app.route("/post/<int:post_id>")
 def post(post_id):
     post = Post.query.get_or_404(post_id)
+    if post.image_file:
+        image_file = url_for('static', filename='post_pics/' + post.image_file)
+        return render_template('post.html', title=post.title, post=post, current_user=current_user, image_file=image_file)
     return render_template('post.html', title=post.title, post=post, current_user=current_user)
 
 
@@ -143,6 +160,9 @@ def update_post(post_id):
     if form.validate_on_submit():
         post.title = form.title.data
         post.content = form.content.data
+        if form.picture.data:
+            picture_file = save_post_image(form.picture.data)
+            post.image_file = picture_file
         db.session.commit()
         flash('Your post has been updated!', 'success')
         return redirect(url_for('post', post_id=post.id))
@@ -159,6 +179,10 @@ def delete_post(post_id):
     post = Post.query.get_or_404(post_id)
     if post.author != current_user:
         abort(403)
+    if post.image_file:
+        path = os.path.join(app.root_path, 'static/post_pics', post.image_file)
+        if os.path.exists(path):
+            os.remove(path)
     db.session.delete(post)
     db.session.commit()
     flash('Your post has been deleted!', 'success')
@@ -170,7 +194,15 @@ def delete_account(user_id):
     user = User.query.get_or_404(user_id)
     posts = Post.query.filter_by(user_id=user_id).all()
     for post in posts:
+        if post.image_file:
+            path = os.path.join(app.root_path, 'static/post_pics', post.image_file)
+            if os.path.exists(path):
+                os.remove(path)
         db.session.delete(post)
+    if user.image_file != 'default.jpg':
+        path = os.path.join(app.root_path, 'static/profile_pics', user.image_file)
+        if os.path.exists(path):
+                os.remove(path)
     db.session.delete(user)
     db.session.commit()
     flash('Your account has been deleted!', 'success')
