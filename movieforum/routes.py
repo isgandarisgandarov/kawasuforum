@@ -14,7 +14,7 @@ s = URLSafeTimedSerializer(app.secret_key)
 
 
 def send_mail(email, token, username):
-    msg = Message('Confirm Email', sender='kawasu.forum@gmail.com', recipients=[email])
+    msg = Message('Confirm Email', sender='', recipients=[email])
     link = url_for('confirm_email', token=token, _external=True)
     msg.body = f'Dear {username}, to verify your email address please follow the link (link is active for an hour): {link}'
     mail.send(msg)
